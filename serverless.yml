@@ -1,0 +1,78 @@
+service:
+  name: properties-backend
+
+provider:
+  name: aws
+  stackName: ${self:service.name}-${self:provider.stage}
+  runtime: nodejs12.x
+  region: ${opt:region, env:AWS_REGION, 'eu-west-1'}
+  stage: ${opt:stage, 'dev'}
+  stackTags:
+    Name: ${self:provider.stackName}
+    AppGroup: properties
+    AppRole: properties-service
+    Environment: ${self:provider.stage}
+  memorySize: 1024
+  iamRoleStatements:
+    - Effect: Allow
+      Action:
+        - dynamodb:Query
+        - dynamodb:GetItem
+        - dynamodb:PutItem
+        - dynamodb:UpdateItem
+        - dynamodb:BatchGetItem
+        - dynamodb:DeleteItem
+        - dynamodb:DescribeStream
+        - dynamodb:ListStreams
+        - dynamodb:StreamArn
+      Resource:
+        - "Fn::GetAtt": [ PropertiesTable, Arn ]
+        - Fn::Join:
+          - "/"
+          - - { "Fn::GetAtt": [ PropertiesTable, Arn ] }
+            - "index/*"
+  environment:
+    SERVICE_STAGE: ${self:provider.stage}
+    PROPERTIES_TABLE: ${self:custom.propertiesTableName}
+    DYNAMODB_LOCAL_PORT: 8080
+
+custom:
+  serverless-offline:
+    useChildProcesses: true
+  dynamodb:
+    start:
+      port: ${env:DYNAMODB_LOCAL_PORT, '8080'}
+      inMemory: true
+      heapInitial: 200m
+      heapMax: 1g
+      migrate: true
+      seed: true
+      convertEmptyValues: true
+  propertiesTableName: ${self:provider.stage}-properties-table
+  webpack:
+  webpackConfig: 'webpack.config.js'
+  includeModules: true
+  packager: 'npm'
+  excludeFiles: src/**/*.test.ts
+  prune:
+  automatic: true
+  number: 5
+
+functions:
+  getProperties:
+    handler: src/functions/get-properties.handler
+    events:
+      - http:
+          method: GET
+          path: properties/
+          cors: true
+
+plugins:
+  - serverless-webpack
+  - serverless-pseudo-parameters
+  - serverless-prune-plugin
+  - serverless-dynamodb-local
+  - serverless-offline
+
+resources:
+  - ${file(resources/resource.yml)}
